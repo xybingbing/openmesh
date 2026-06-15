@@ -14,9 +14,9 @@ import (
 )
 
 type Store struct {
-	mu     sync.Mutex
-	path   string
-	state  State
+	mu    sync.Mutex
+	path  string
+	state State
 }
 
 type State struct {
@@ -97,8 +97,11 @@ func (s *Store) Node(id string) (model.Node, bool) {
 }
 
 func (s *Store) saveLocked() error {
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil && filepath.Dir(s.path) != "." {
-		return err
+	dir := filepath.Dir(s.path)
+	if dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
 	}
 	b, err := json.MarshalIndent(s.state, "", "  ")
 	if err != nil {
@@ -108,6 +111,6 @@ func (s *Store) saveLocked() error {
 }
 
 func meshIP(offset uint32) string {
-	base := netip.MustParseAddr("100.64.0.0")
-	return base.Next().StringWithPrefix()[:0] + netip.AddrFrom4([4]byte{100, 64, byte(offset >> 8), byte(offset)}).String() + "/32"
+	addr := netip.AddrFrom4([4]byte{100, 64, byte(offset >> 8), byte(offset)})
+	return addr.String() + "/32"
 }
