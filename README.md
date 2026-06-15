@@ -26,6 +26,8 @@ The first milestone focuses on a minimal working system:
 - Mesh IP allocation
 - WireGuard config generation
 - Agent registration/config pull
+- Agent daemon loop
+- OpenWrt procd service template
 - FakeTCP package boundary
 
 ## Build
@@ -58,6 +60,33 @@ go build -o openmesh ./cmd/openmesh
   --controller http://127.0.0.1:8080 \
   --token dev-token \
   --node-id <node-id>
+```
+
+## Save agent config
+
+```bash
+./openmesh agent save-config \
+  --controller http://127.0.0.1:8080 \
+  --token dev-token \
+  --node-id node-1 \
+  --config ./agent.json \
+  --wg-config ./openmesh.conf
+```
+
+## Run agent daemon once
+
+```bash
+./openmesh agent daemon --config ./agent.json --once
+```
+
+## OpenWrt
+
+OpenWrt package files live under `openwrt/`:
+
+```text
+openwrt/Makefile
+openwrt/files/etc/config/openmesh
+openwrt/files/etc/init.d/openmesh
 ```
 
 ## License
