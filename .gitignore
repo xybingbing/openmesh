@@ -1,0 +1,6 @@
+bin/
+*.test
+*.out
+openmesh
+openmesh.json
+.DS_Store
