@@ -7,7 +7,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
+
+	"github.com/xybingbing/openmesh/internal/system"
+	"github.com/xybingbing/openmesh/internal/wg"
 )
 
 type DaemonConfig struct {
@@ -17,22 +21,45 @@ type DaemonConfig struct {
 }
 
 func Apply(ctx context.Context, cfg LocalConfig) error {
+	_, err := ApplyAndReturnConfig(ctx, cfg)
+	return err
+}
+
+func ApplyAndReturnConfig(ctx context.Context, cfg LocalConfig) (string, error) {
+	applyDefaults(&cfg)
 	var buf bytes.Buffer
 	if err := Config(ctx, ConfigConfig{ControllerURL: cfg.ControllerURL, Token: cfg.Token, NodeID: cfg.NodeID}, &buf); err != nil {
-		return err
+		return "", err
 	}
-	if err := writeWGConfig(cfg.WGConfigPath, buf.Bytes()); err != nil {
-		return err
+	wgConfig := buf.String()
+	if err := writeWGConfig(cfg.WGConfigPath, []byte(wgConfig)); err != nil {
+		return "", err
 	}
 	if cfg.SyncCommand != "" {
 		cmd := exec.CommandContext(ctx, "sh", "-c", cfg.SyncCommand)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("sync command failed: %w", err)
+			return "", fmt.Errorf("sync command failed: %w", err)
 		}
 	}
-	return nil
+	return wgConfig, nil
+}
+
+func Up(ctx context.Context, cfg LocalConfig, runner system.Runner) error {
+	wgConfig, err := ApplyAndReturnConfig(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	if cfg.WGAddress == "" {
+		cfg.WGAddress = extractAddress(wgConfig)
+	}
+	return wg.Runtime{Runner: runner}.Up(ctx, wg.RuntimeConfig{Interface: cfg.WGInterface, Config: cfg.WGConfigPath, Address: cfg.WGAddress, MTU: cfg.WGMTU})
+}
+
+func Down(ctx context.Context, cfg LocalConfig, runner system.Runner) error {
+	applyDefaults(&cfg)
+	return wg.Runtime{Runner: runner}.Down(ctx, cfg.WGInterface)
 }
 
 func Daemon(ctx context.Context, dc DaemonConfig) error {
@@ -60,6 +87,16 @@ func Daemon(ctx context.Context, dc DaemonConfig) error {
 		case <-time.After(dc.Interval):
 		}
 	}
+}
+
+func extractAddress(wgConfig string) string {
+	for _, line := range strings.Split(wgConfig, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "Address =") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "Address ="))
+		}
+	}
+	return ""
 }
 
 func writeWGConfig(path string, b []byte) error {
