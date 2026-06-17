@@ -50,6 +50,8 @@ Usage:
   openmesh agent config --controller http://127.0.0.1:8080 --token dev-token --node-id <id>
   openmesh agent save-config --controller http://127.0.0.1:8080 --token dev-token --node-id <id> --config /etc/openmesh/agent.json
   openmesh agent daemon --config /etc/openmesh/agent.json
+  openmesh agent up --config /etc/openmesh/agent.json
+  openmesh agent down --config /etc/openmesh/agent.json
 
   openmesh faketcp server --listen :9000
   openmesh faketcp client --remote 127.0.0.1:9000
@@ -94,7 +96,6 @@ func runFakeTCP(ctx context.Context, args []string) error {
 				return err
 			}
 			fmt.Printf("recv from %v: %s\n", addr, string(pkt.Payload))
-			_ = pkt
 		}
 
 	case "client":
@@ -160,11 +161,14 @@ func runAgent(ctx context.Context, args []string) error {
 		nodeID := fs.String("node-id", "", "node id")
 		path := fs.String("config", "/etc/openmesh/agent.json", "agent config path")
 		wgPath := fs.String("wg-config", "/etc/wireguard/openmesh.conf", "WireGuard config path")
+		wgInterface := fs.String("wg-interface", "openmesh", "WireGuard interface name")
+		wgAddress := fs.String("wg-address", "", "WireGuard interface address, optional")
+		wgMTU := fs.Int("wg-mtu", 1280, "WireGuard interface MTU")
+		syncCommand := fs.String("sync-command", "", "optional sync command")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		_ = wgPath
-		return agent.SaveLocalConfig(*path, agent.LocalConfig{ControllerURL: *controllerURL, Token: *token, NodeID: *nodeID, WGConfigPath: *wgPath})
+		return agent.SaveLocalConfig(*path, agent.LocalConfig{ControllerURL: *controllerURL, Token: *token, NodeID: *nodeID, WGConfigPath: *wgPath, WGInterface: *wgInterface, WGAddress: *wgAddress, WGMTU: *wgMTU, SyncCommand: *syncCommand})
 	case "daemon":
 		fs := flag.NewFlagSet("agent daemon", flag.ContinueOnError)
 		path := fs.String("config", "/etc/openmesh/agent.json", "agent config path")
@@ -174,6 +178,28 @@ func runAgent(ctx context.Context, args []string) error {
 			return err
 		}
 		return agent.Daemon(ctx, agent.DaemonConfig{ConfigPath: *path, Interval: *interval, Once: *once})
+	case "up":
+		fs := flag.NewFlagSet("agent up", flag.ContinueOnError)
+		path := fs.String("config", "/etc/openmesh/agent.json", "agent config path")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		cfg, err := agent.LoadLocalConfig(*path)
+		if err != nil {
+			return err
+		}
+		return agent.Up(ctx, cfg, nil)
+	case "down":
+		fs := flag.NewFlagSet("agent down", flag.ContinueOnError)
+		path := fs.String("config", "/etc/openmesh/agent.json", "agent config path")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		cfg, err := agent.LoadLocalConfig(*path)
+		if err != nil {
+			return err
+		}
+		return agent.Down(ctx, cfg, nil)
 	default:
 		return fmt.Errorf("unknown agent subcommand %q", args[0])
 	}
