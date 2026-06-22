@@ -69,12 +69,36 @@ func (s *Store) Register(req model.RegisterRequest) (model.Node, error) {
 		PublicKey: req.PublicKey,
 		MeshIP:    meshIP(s.state.NextIP),
 		Endpoint:  req.Endpoint,
+		Status:    "registered",
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
 	s.state.NextIP++
 	s.state.Nodes = append(s.state.Nodes, n)
 	return n, s.saveLocked()
+}
+
+func (s *Store) Heartbeat(id string, req model.HeartbeatRequest) (model.Node, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now().UTC()
+	for i := range s.state.Nodes {
+		if s.state.Nodes[i].ID == id {
+			if req.Endpoint != "" {
+				s.state.Nodes[i].Endpoint = req.Endpoint
+			}
+			if req.Status == "" {
+				req.Status = "online"
+			}
+			s.state.Nodes[i].Status = req.Status
+			s.state.Nodes[i].Version = req.Version
+			s.state.Nodes[i].LastSeen = now
+			s.state.Nodes[i].UpdatedAt = now
+			return s.state.Nodes[i], s.saveLocked()
+		}
+	}
+	return model.Node{}, fmt.Errorf("node not found")
 }
 
 func (s *Store) Nodes() []model.Node {
