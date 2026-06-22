@@ -37,7 +37,7 @@ func Run(ctx context.Context, cfg Config) error {
 	h := http.NewServeMux()
 	h.HandleFunc("/healthz", s.healthz)
 	h.HandleFunc("/api/v1/nodes", s.auth(s.nodes))
-	h.HandleFunc("/api/v1/nodes/", s.auth(s.nodeConfig))
+	h.HandleFunc("/api/v1/nodes/", s.auth(s.nodeRoute))
 
 	srv := &http.Server{Addr: cfg.Listen, Handler: h}
 	go func() {
@@ -91,24 +91,53 @@ func (s *Server) nodes(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) nodeConfig(w http.ResponseWriter, r *http.Request) {
+func (s *Server) nodeRoute(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/nodes/")
+	parts := strings.Split(path, "/")
+	if len(parts) != 2 {
+		http.NotFound(w, r)
+		return
+	}
+	switch parts[1] {
+	case "config":
+		s.nodeConfig(w, r, parts[0])
+	case "heartbeat":
+		s.nodeHeartbeat(w, r, parts[0])
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func (s *Server) nodeConfig(w http.ResponseWriter, r *http.Request, nodeID string) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	path := strings.TrimPrefix(r.URL.Path, "/api/v1/nodes/")
-	parts := strings.Split(path, "/")
-	if len(parts) != 2 || parts[1] != "config" {
-		http.NotFound(w, r)
-		return
-	}
-	n, ok := s.store.Node(parts[0])
+	n, ok := s.store.Node(nodeID)
 	if !ok {
 		http.NotFound(w, r)
 		return
 	}
 	cfg := wg.RenderNodeConfig(n, s.store.Nodes(), wg.RenderOptions{})
 	writeJSON(w, http.StatusOK, model.ConfigResponse{Node: n, WGConfig: cfg, Generated: time.Now().UTC().Format(time.RFC3339)})
+}
+
+func (s *Server) nodeHeartbeat(w http.ResponseWriter, r *http.Request, nodeID string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req model.HeartbeatRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	n, err := s.store.Heartbeat(nodeID, req)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, model.HeartbeatResponse{Node: n})
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
