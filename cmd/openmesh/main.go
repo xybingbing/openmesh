@@ -48,6 +48,7 @@ Usage:
   openmesh controller --listen :8080 --data ./openmesh.json --token dev-token
   openmesh agent register --controller http://127.0.0.1:8080 --token dev-token --name node-a --public-key <key>
   openmesh agent config --controller http://127.0.0.1:8080 --token dev-token --node-id <id>
+  openmesh agent heartbeat --controller http://127.0.0.1:8080 --token dev-token --node-id <id>
   openmesh agent save-config --controller http://127.0.0.1:8080 --token dev-token --node-id <id> --config /etc/openmesh/agent.json
   openmesh agent daemon --config /etc/openmesh/agent.json
   openmesh agent up --config /etc/openmesh/agent.json
@@ -154,6 +155,18 @@ func runAgent(ctx context.Context, args []string) error {
 			return err
 		}
 		return agent.Config(ctx, agent.ConfigConfig{ControllerURL: *controllerURL, Token: *token, NodeID: *nodeID}, os.Stdout)
+	case "heartbeat":
+		fs := flag.NewFlagSet("agent heartbeat", flag.ContinueOnError)
+		controllerURL := fs.String("controller", "", "controller URL")
+		token := fs.String("token", "", "API token")
+		nodeID := fs.String("node-id", "", "node id")
+		version := fs.String("version", "dev", "agent version")
+		endpoint := fs.String("endpoint", "", "optional endpoint")
+		status := fs.String("status", "online", "node status")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		return agent.Heartbeat(ctx, agent.HeartbeatConfig{ControllerURL: *controllerURL, Token: *token, NodeID: *nodeID, Version: *version, Endpoint: *endpoint, Status: *status}, os.Stdout)
 	case "save-config":
 		fs := flag.NewFlagSet("agent save-config", flag.ContinueOnError)
 		controllerURL := fs.String("controller", "", "controller URL")
@@ -174,10 +187,11 @@ func runAgent(ctx context.Context, args []string) error {
 		path := fs.String("config", "/etc/openmesh/agent.json", "agent config path")
 		interval := fs.Duration("interval", 30*time.Second, "sync interval")
 		once := fs.Bool("once", false, "run once and exit")
+		version := fs.String("version", "dev", "agent version")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		return agent.Daemon(ctx, agent.DaemonConfig{ConfigPath: *path, Interval: *interval, Once: *once})
+		return agent.Daemon(ctx, agent.DaemonConfig{ConfigPath: *path, Interval: *interval, Once: *once, Version: *version})
 	case "up":
 		fs := flag.NewFlagSet("agent up", flag.ContinueOnError)
 		path := fs.String("config", "/etc/openmesh/agent.json", "agent config path")
