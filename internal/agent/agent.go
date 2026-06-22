@@ -27,6 +27,15 @@ type ConfigConfig struct {
 	NodeID        string
 }
 
+type HeartbeatConfig struct {
+	ControllerURL string
+	Token         string
+	NodeID        string
+	Version       string
+	Endpoint      string
+	Status        string
+}
+
 func Register(ctx context.Context, cfg RegisterConfig, out io.Writer) error {
 	if cfg.ControllerURL == "" {
 		return fmt.Errorf("controller URL is required")
@@ -37,17 +46,15 @@ func Register(ctx context.Context, cfg RegisterConfig, out io.Writer) error {
 	}
 
 	url := strings.TrimRight(cfg.ControllerURL, "/") + "/api/v1/nodes"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	if cfg.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+cfg.Token)
-	}
+	request.Header.Set("Content-Type", "application/json")
+	setToken(request, cfg.Token)
 
 	var resp model.RegisterResponse
-	if err := do(req, &resp); err != nil {
+	if err := do(request, &resp); err != nil {
 		return err
 	}
 	enc := json.NewEncoder(out)
@@ -60,20 +67,55 @@ func Config(ctx context.Context, cfg ConfigConfig, out io.Writer) error {
 		return fmt.Errorf("controller URL and node id are required")
 	}
 	url := strings.TrimRight(cfg.ControllerURL, "/") + "/api/v1/nodes/" + cfg.NodeID + "/config"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}
-	if cfg.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+cfg.Token)
-	}
+	setToken(request, cfg.Token)
 
 	var resp model.ConfigResponse
-	if err := do(req, &resp); err != nil {
+	if err := do(request, &resp); err != nil {
 		return err
 	}
 	_, err = fmt.Fprint(out, resp.WGConfig)
 	return err
+}
+
+func Heartbeat(ctx context.Context, cfg HeartbeatConfig, out io.Writer) error {
+	if cfg.ControllerURL == "" || cfg.NodeID == "" {
+		return fmt.Errorf("controller URL and node id are required")
+	}
+	if cfg.Version == "" {
+		cfg.Version = "dev"
+	}
+	body, err := json.Marshal(model.HeartbeatRequest{Version: cfg.Version, Endpoint: cfg.Endpoint, Status: cfg.Status})
+	if err != nil {
+		return err
+	}
+	url := strings.TrimRight(cfg.ControllerURL, "/") + "/api/v1/nodes/" + cfg.NodeID + "/heartbeat"
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	setToken(request, cfg.Token)
+
+	var resp model.HeartbeatResponse
+	if err := do(request, &resp); err != nil {
+		return err
+	}
+	if out != nil {
+		enc := json.NewEncoder(out)
+		enc.SetIndent("", "  ")
+		return enc.Encode(resp)
+	}
+	return nil
+}
+
+func setToken(req *http.Request, token string) {
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 }
 
 func do(req *http.Request, out any) error {
