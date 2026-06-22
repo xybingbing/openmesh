@@ -18,6 +18,7 @@ type DaemonConfig struct {
 	ConfigPath string
 	Interval   time.Duration
 	Once       bool
+	Version    string
 }
 
 func Apply(ctx context.Context, cfg LocalConfig) error {
@@ -69,6 +70,9 @@ func Daemon(ctx context.Context, dc DaemonConfig) error {
 	if dc.Interval == 0 {
 		dc.Interval = 30 * time.Second
 	}
+	if dc.Version == "" {
+		dc.Version = "dev"
+	}
 
 	cfg, err := LoadLocalConfig(dc.ConfigPath)
 	if err != nil {
@@ -77,6 +81,9 @@ func Daemon(ctx context.Context, dc DaemonConfig) error {
 	for {
 		if err := Apply(ctx, cfg); err != nil {
 			fmt.Fprintln(os.Stderr, "agent apply failed:", err)
+		}
+		if err := Heartbeat(ctx, HeartbeatConfig{ControllerURL: cfg.ControllerURL, Token: cfg.Token, NodeID: cfg.NodeID, Version: dc.Version, Endpoint: "", Status: "online"}, nil); err != nil {
+			fmt.Fprintln(os.Stderr, "agent heartbeat failed:", err)
 		}
 		if dc.Once {
 			return nil
