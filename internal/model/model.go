@@ -8,6 +8,9 @@ type Node struct {
 	PublicKey string    `json:"public_key"`
 	MeshIP    string    `json:"mesh_ip"`
 	Endpoint  string    `json:"endpoint,omitempty"`
+	Status    string    `json:"status,omitempty"`
+	Version   string    `json:"version,omitempty"`
+	LastSeen  time.Time `json:"last_seen,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -19,6 +22,16 @@ type RegisterRequest struct {
 }
 
 type RegisterResponse struct {
+	Node Node `json:"node"`
+}
+
+type HeartbeatRequest struct {
+	Version  string `json:"version"`
+	Endpoint string `json:"endpoint,omitempty"`
+	Status   string `json:"status,omitempty"`
+}
+
+type HeartbeatResponse struct {
 	Node Node `json:"node"`
 }
 
