@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/xybingbing/openmesh/internal/model"
+	"github.com/xybingbing/openmesh/internal/status"
 	"github.com/xybingbing/openmesh/internal/store"
 	"github.com/xybingbing/openmesh/internal/wg"
 )
@@ -36,6 +37,7 @@ func Run(ctx context.Context, cfg Config) error {
 
 	h := http.NewServeMux()
 	h.HandleFunc("/healthz", s.healthz)
+	h.HandleFunc("/api/v1/status", s.auth(s.statusAll))
 	h.HandleFunc("/api/v1/nodes", s.auth(s.nodes))
 	h.HandleFunc("/api/v1/nodes/", s.auth(s.nodeRoute))
 
@@ -68,6 +70,14 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 
 func (s *Server) healthz(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) statusAll(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"nodes": status.EvaluateNodes(s.store.Nodes(), time.Now().UTC(), status.DefaultOfflineAfter)})
 }
 
 func (s *Server) nodes(w http.ResponseWriter, r *http.Request) {
@@ -103,6 +113,8 @@ func (s *Server) nodeRoute(w http.ResponseWriter, r *http.Request) {
 		s.nodeConfig(w, r, parts[0])
 	case "heartbeat":
 		s.nodeHeartbeat(w, r, parts[0])
+	case "status":
+		s.nodeStatus(w, r, parts[0])
 	default:
 		http.NotFound(w, r)
 	}
@@ -138,6 +150,19 @@ func (s *Server) nodeHeartbeat(w http.ResponseWriter, r *http.Request, nodeID st
 		return
 	}
 	writeJSON(w, http.StatusOK, model.HeartbeatResponse{Node: n})
+}
+
+func (s *Server) nodeStatus(w http.ResponseWriter, r *http.Request, nodeID string) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	n, ok := s.store.Node(nodeID)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, status.EvaluateNode(n, time.Now().UTC(), status.DefaultOfflineAfter))
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
