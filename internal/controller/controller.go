@@ -11,6 +11,7 @@ import (
 	"github.com/xybingbing/openmesh/internal/model"
 	"github.com/xybingbing/openmesh/internal/status"
 	"github.com/xybingbing/openmesh/internal/store"
+	"github.com/xybingbing/openmesh/internal/topology"
 	"github.com/xybingbing/openmesh/internal/wg"
 )
 
@@ -38,6 +39,7 @@ func Run(ctx context.Context, cfg Config) error {
 	h := http.NewServeMux()
 	h.HandleFunc("/healthz", s.healthz)
 	h.HandleFunc("/api/v1/status", s.auth(s.statusAll))
+	h.HandleFunc("/api/v1/peers", s.auth(s.peersAll))
 	h.HandleFunc("/api/v1/nodes", s.auth(s.nodes))
 	h.HandleFunc("/api/v1/nodes/", s.auth(s.nodeRoute))
 
@@ -80,6 +82,14 @@ func (s *Server) statusAll(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"nodes": status.EvaluateNodes(s.store.Nodes(), time.Now().UTC(), status.DefaultOfflineAfter)})
 }
 
+func (s *Server) peersAll(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"topology": topology.BuildAllPeers(s.store.Nodes(), time.Now().UTC())})
+}
+
 func (s *Server) nodes(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -115,6 +125,8 @@ func (s *Server) nodeRoute(w http.ResponseWriter, r *http.Request) {
 		s.nodeHeartbeat(w, r, parts[0])
 	case "status":
 		s.nodeStatus(w, r, parts[0])
+	case "peers":
+		s.nodePeers(w, r, parts[0])
 	default:
 		http.NotFound(w, r)
 	}
@@ -163,6 +175,19 @@ func (s *Server) nodeStatus(w http.ResponseWriter, r *http.Request, nodeID strin
 		return
 	}
 	writeJSON(w, http.StatusOK, status.EvaluateNode(n, time.Now().UTC(), status.DefaultOfflineAfter))
+}
+
+func (s *Server) nodePeers(w http.ResponseWriter, r *http.Request, nodeID string) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	peers, ok := topology.BuildNodePeers(s.store.Nodes(), nodeID, time.Now().UTC())
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, peers)
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
